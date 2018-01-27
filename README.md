@@ -9,7 +9,7 @@ The generated file is a "pseudo-ARQ" in the sense that it will have the same dat
 
 - Python (tested with 2.7);
 
-- [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/), which must be in your $PATH`;
+- [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/), which must be in your `PATH`;
 
 - [tifffile](https://pypi.python.org/pypi/tifffile)
 
