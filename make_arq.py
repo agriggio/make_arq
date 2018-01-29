@@ -26,6 +26,7 @@ import time
 import tempfile
 import json
 import subprocess
+import stat
 
 try:
     from _makearq import get_frame_data as _get_frame_data
@@ -119,8 +120,8 @@ def get_frames(framenames):
         4 : 2,
         3 : 3,
         }
-    def key((name, tags)):
-        return seq2idx[tags['MakerNotes:SequenceNumber']]
+    def key(t):
+        return seq2idx[t[1]['MakerNotes:SequenceNumber']]
     frames.sort(key=key)
     w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
     return frames, w, h
@@ -139,8 +140,8 @@ def write_pseudo_arq(filename, data, outtags):
     wbkey = "MakerNotes:WB_RGGBLevels"
     if wbkey in outtags:
         try:
-            wb = map(int, outtags[wbkey].split())
-        except Exception, e:
+            wb = [int(c) for c in outtags[wbkey].split()]
+        except Exception as e:
             print("WARNING: can't determine camera WB (%s)" % str(e))
 
     # set the WB where dcraw can find it
@@ -185,6 +186,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except Exception, e:
+    except Exception as e:
         print('ERROR: %s' % str(e))
         exit(-1)

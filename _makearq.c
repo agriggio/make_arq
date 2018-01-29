@@ -117,8 +117,27 @@ static PyMethodDef _makearq_methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+#if PY_MAJOR_VERSION == 2
 
 void init_makearq(void)
 {
     Py_InitModule("_makearq", _makearq_methods);
 }
+
+#else
+
+static struct PyModuleDef _makearqmodule = {
+    PyModuleDef_HEAD_INIT,
+    "_makearq",
+    NULL,
+    -1,
+    _makearq_methods
+};
+
+PyMODINIT_FUNC
+PyInit__makearq(void)
+{
+    return PyModule_Create(&_makearqmodule);
+}
+
+#endif
