@@ -160,10 +160,18 @@ def write_pseudo_arq(filename, data, outtags):
     os.close(fd)
     with open(jsonname, 'w') as out:
         json.dump([outtags], out)
-    ret = subprocess.call(['exiftool', '-overwrite_original',
-                           '-b', '-G', '-j=' + jsonname, filename])
+    
+    p = subprocess.Popen(['exiftool', '-overwrite_original',
+                          '-b', '-G', '-j=' + jsonname, filename],
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    err, _ = p.communicate()
     os.unlink(jsonname)
-    assert ret == 0
+    
+    # make sure the file is writable
+    os.chmod(filename, 0666)
+    
+    if p.returncode != 0:
+        raise IOError(err)
 
 
 def main():
