@@ -168,7 +168,7 @@ def write_pseudo_arq(filename, data, outtags):
     os.unlink(jsonname)
     
     # make sure the file is writable
-    os.chmod(filename, 0666)
+    os.chmod(filename, 0o666)
     
     if p.returncode != 0:
         raise IOError(err)
