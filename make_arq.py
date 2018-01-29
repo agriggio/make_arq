@@ -148,7 +148,7 @@ def write_pseudo_arq(filename, data, outtags):
     extratags = []
     if wb is not None:
         extratags.append((29459, 'H', 4, wb))
-    tifffile.imsave(filename, data, photometric='rgb', planarconfig='contig',
+    tifffile.imsave(filename, data, photometric=None, planarconfig='contig',
                     extratags=extratags)
 
     # try preserving the tags
