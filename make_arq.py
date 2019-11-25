@@ -31,7 +31,8 @@ import stat
 try:
     from _makearq import get_frame_data as _get_frame_data
 except ImportError:
-    def _get_frame_data(data, filename, idx, width, height, offset):
+    def _get_frame_data(data, filename, idx, width, height, offset,
+                        factor=1, rowstart=0, colstart=0):
         fmt = '=' + ('H' * width)
         rowbytes = width * 2
         r_off, c_off = {
@@ -48,11 +49,11 @@ except ImportError:
             for row in xrange(height):
                 d = f.read(rowbytes)
                 v = struct.unpack(fmt, d)
-                rr = row + r_off - 1
+                rr = (row + r_off - 1) * factor + rowstart
                 if rr >= 0:
                     rowdata = data[rr]
                     for col in xrange(width):
-                        cc = col + c_off - 1
+                        cc = (col + c_off - 1) * factor + colstart
                         if cc >= 0:
                             c = color(row, col)
                             rowdata[cc][c] = v[col]        
@@ -63,8 +64,11 @@ def getopts():
     p.add_argument('-f', '--force', action='store_true',
                    help='overwrite destination')
     p.add_argument('-o', '--output', help='output file')
-    p.add_argument('frames', nargs=4, help='the 4 frames')
-    return p.parse_args()
+    p.add_argument('frames', nargs='+', help='the 4 (or 16) frames')
+    opts = p.parse_args()
+    if len(opts.frames) not in (4, 16):
+        raise ValueError("please provide 4 or 16 frames (got %d)" % opts.frames)
+    return opts
 
 
 def get_tags(filename):
@@ -94,16 +98,17 @@ def check_valid_frames(frames):
         aperture.add(tags.get('EXIF:FNumber'))
         shutter.add(tags.get('EXIF:ShutterSpeed'))
     if len(make) != 1 or make.pop() != 'SONY':
-        raise ValueError('the four frames must all come from a '
-                         'SONY ILC3-7RM3 camera')
-    if len(model) != 1 or model.pop() != 'ILCE-7RM3':
-        raise ValueError('the four frames must all come from a '
-                         'SONY ILC3-7RM3 camera')
+        raise ValueError('the frames must all come from a '
+                         'SONY ILCE-7RM3 or ILCE-7RM4 camera')
+    if len(model) != 1 or model.pop() not in ('ILCE-7RM3', 'ILCE-7RM4'):
+        raise ValueError('the frames must all come from a '
+                         'SONY ILC3-7RM3 or ILCE-7RM4 camera')
     if len(width) != 1 or len(height) != 1:
         raise ValueError('the frames have different dimensions')
     if len(lens) != 1 or len(aperture) != 1 or len(shutter) != 1:
         raise ValueError('the frames have different lenses and/or exposures')
-    if seq != set([1, 2, 3, 4]):
+    off = min(seq)
+    if seq != set(range(off, off+len(frames))):
         raise ValueError('the frames do not form a valid sequence')
 
 
@@ -121,18 +126,34 @@ def get_frames(framenames):
         3 : 3,
         }
     def key(t):
-        return seq2idx[t[1]['MakerNotes:SequenceNumber']]
+        sn = t[1]['MakerNotes:SequenceNumber'] - 1
+        s = 1 + (sn) % 4
+        i = seq2idx[s]
+        g = seq2idx[1 + sn / 4]
+        return (g, i)
     frames.sort(key=key)
     w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
+    if len(frames) == 16:
+        w *= 2
+        h *= 2
     return frames, w, h
     
 
-def get_frame_data(data, frame, idx):
+def get_frame_data(data, frame, idx, is16):
     filename, tags = frame
     width = tags['EXIF:ImageWidth']
     height = tags['EXIF:ImageHeight']
     off = tags['EXIF:StripOffsets']
-    _get_frame_data(data, filename, idx, width, height, off)
+    if not is16:
+        factor = 1
+        rowstart = 0
+        colstart = 0
+    else:
+        factor = 2
+        rowstart = 1 if (idx / 4) >= 2 else 0
+        colstart = 1 if (idx / 4) % 2 else 0
+    _get_frame_data(data, filename, idx % 4, width, height, off,
+                    factor, rowstart, colstart)
 
 
 def write_pseudo_arq(filename, data, outtags):
@@ -153,7 +174,8 @@ def write_pseudo_arq(filename, data, outtags):
 
     # try preserving the tags
     for key in ('MakerNotes:SequenceNumber', 'SourceFile',
-                'EXIF:SamplesPerPixel'):
+                'EXIF:SamplesPerPixel',
+                'EXIF:ImageWidth', 'EXIF:ImageHeight'):
         if key in outtags:
             del outtags[key]
     fd, jsonname = tempfile.mkstemp('.json')
@@ -182,9 +204,10 @@ def main():
                       % opts.output)
     frames, width, height = get_frames(opts.frames)
     data = numpy.empty((height, width, 4), numpy.ushort)
+    is16 = len(frames) == 16
     for idx, frame in enumerate(frames):
         print('Reading frame:', frame[0])
-        get_frame_data(data, frame, idx)
+        get_frame_data(data, frame, idx, is16)
     print('Writing combined data to %s...' % opts.output)
     write_pseudo_arq(opts.output, data, frames[0][1])
     end = time.time()

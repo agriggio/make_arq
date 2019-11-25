@@ -25,6 +25,7 @@
 static PyObject *get_frame_data(PyObject *self, PyObject *args)
 {
     int width, height, offset, index;
+    int factor, rowstart, colstart;
     char *filename;
     PyObject *data;
     FILE *src;
@@ -34,8 +35,9 @@ static PyObject *get_frame_data(PyObject *self, PyObject *args)
     src = NULL;
     line = NULL;
 
-    if (!PyArg_ParseTuple(args, "Osiiii", &data, &filename,
-                          &index, &width, &height, &offset)) {
+    if (!PyArg_ParseTuple(args, "Osiiiiiii", &data, &filename,
+                          &index, &width, &height, &offset,
+                          &factor, &rowstart, &colstart)) {
         goto err;
     }
 
@@ -81,9 +83,9 @@ static PyObject *get_frame_data(PyObject *self, PyObject *args)
             goto err;
         }
         for (int col = 0; col < width; ++col) {
-            int rr = row + r_off - 1;
+            int rr = (row + r_off - 1) * factor + rowstart;
             if (rr >= 0) {
-                int cc = col + c_off - 1;
+                int cc = (col + c_off - 1) * factor + colstart;
                 if (cc >= 0) {
                     int c = color(row, col);
                     unsigned short *out =
