@@ -27,6 +27,7 @@ import tempfile
 import json
 import subprocess
 import stat
+import math
 
 try:
     from _makearq import get_frame_data as _get_frame_data
@@ -127,9 +128,10 @@ def get_frames(framenames):
         }
     def key(t):
         sn = t[1]['MakerNotes:SequenceNumber'] - 1
+        print("sn: {0}".format(sn))
         s = 1 + (sn) % 4
         i = seq2idx[s]
-        g = seq2idx[1 + sn / 4]
+        g = seq2idx[1 + math.floor(sn / 4)]
         return (g, i)
     frames.sort(key=key)
     w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
@@ -215,8 +217,4 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as e:
-        print('ERROR: %s' % str(e))
-        exit(-1)
+    main()
