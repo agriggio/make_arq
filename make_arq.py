@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
-#    make_arq - A tool for generating Sony A7RIII Pixel-Shift ARQ files
-#    Copyright (C) 2018 Alberto Griggio <alberto.griggio@gmail.com>
+#    make_arq - A tool for generating Sony Pixel-Shift ARQ files
+#    Copyright (C) 2018-2020 Alberto Griggio <alberto.griggio@gmail.com>
 #
 #    make_arq is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -16,7 +16,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-from __future__ import print_function
+
+from __future__ import print_function, division
 import os, sys
 import argparse
 import tifffile
@@ -44,15 +45,19 @@ except ImportError:
 
         def color(row, col):
             return ((row & 1) << 1) + (col & 1)
+
+        rowidx = list(range(height))
+        colidx = list(range(width))
+
         with open(filename, 'rb') as f:
             f.seek(offset)
-            for row in xrange(height):
+            for row in rowidx:
                 d = f.read(rowbytes)
                 v = struct.unpack(fmt, d)
                 rr = (row + r_off - 1) * factor + rowstart
                 if rr >= 0:
                     rowdata = data[rr]
-                    for col in xrange(width):
+                    for col in colidx:
                         cc = (col + c_off - 1) * factor + colstart
                         if cc >= 0:
                             c = color(row, col)
@@ -64,6 +69,8 @@ def getopts():
     p.add_argument('-f', '--force', action='store_true',
                    help='overwrite destination')
     p.add_argument('-o', '--output', help='output file')
+    p.add_argument('-4', '--force-4', action='store_true',
+                   help='force using 4 frames only, even if 16 are provided')
     p.add_argument('frames', nargs='+', help='the 4 (or 16) frames')
     opts = p.parse_args()
     if len(opts.frames) not in (4, 16):
@@ -129,7 +136,7 @@ def get_frames(framenames):
         sn = t[1]['MakerNotes:SequenceNumber'] - 1
         s = 1 + (sn) % 4
         i = seq2idx[s]
-        g = seq2idx[1 + sn / 4]
+        g = seq2idx[1 + sn // 4]
         return (g, i)
     frames.sort(key=key)
     w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
@@ -150,8 +157,8 @@ def get_frame_data(data, frame, idx, is16):
         colstart = 0
     else:
         factor = 2
-        rowstart = 1 if (idx / 4) >= 2 else 0
-        colstart = 1 if (idx / 4) % 2 else 0
+        rowstart = 1 if (idx // 4) >= 2 else 0
+        colstart = 1 if (idx // 4) % 2 else 0
     _get_frame_data(data, filename, idx % 4, width, height, off,
                     factor, rowstart, colstart)
 
@@ -203,8 +210,13 @@ def main():
         raise IOError('output file "%s" already exists (use -f to overwrite)'
                       % opts.output)
     frames, width, height = get_frames(opts.frames)
-    data = numpy.empty((height, width, 4), numpy.ushort)
     is16 = len(frames) == 16
+    if is16 and opts.force_4:
+        frames = [frames[0], frames[4], frames[8], frames[12]]
+        is16 = False
+        width //= 2
+        height //= 2
+    data = numpy.empty((height, width, 4), numpy.ushort)
     for idx, frame in enumerate(frames):
         print('Reading frame:', frame[0])
         get_frame_data(data, frame, idx, is16)
