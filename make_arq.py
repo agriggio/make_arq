@@ -30,8 +30,14 @@ import subprocess
 import stat
 
 try:
-    from _makearq import get_frame_data as _get_frame_data
+    import _makearq
+    _has_makearq = True
 except ImportError:
+    _has_makearq = False
+
+if _has_makearq:
+    _get_frame_data = _makearq.get_frame_data
+else:
     def _get_frame_data(data, filename, idx, width, height, offset,
                         factor=1, rowstart=0, colstart=0):
         fmt = '=' + ('H' * width)
@@ -63,6 +69,40 @@ except ImportError:
                             c = color(row, col)
                             rowdata[cc][c] = v[col]        
 
+try:
+    import rawpy
+    
+    def _get_fuji_frame_data(data, filename, idx, 
+                             factor=1, rowstart=0, colstart=0):
+        with rawpy.imread(filename) as raw:
+            im = raw.raw_image
+
+            if _has_makearq:
+                _makearq.get_fuji_frame_data(
+                    im, len(im), len(im[0]), 
+                    data, idx, factor, rowstart, colstart)
+            else:
+                r_off, c_off = {
+                    0 : (1, 0),
+                    1 : (1, 1),
+                    2 : (0, 0),
+                    3 : (0, 1)
+                    }[idx]
+                color = raw.raw_colors
+                for y, row in enumerate(im):
+                    rr = (y + r_off - 1) * factor + rowstart
+                    if rr >= 0:
+                        rowdata = data[rr]
+                        for x, v in enumerate(row):
+                            cc = (x + c_off - 1) * factor + colstart
+                            if cc >= 0:
+                                c = color[y][x]
+                                rowdata[cc][c] = v
+                            
+except ImportError:
+    def _get_fuji_frame_data(*args):
+        raise ValueError("please install rawpy to enable FUJIFILM support")
+    
 
 def getopts():
     p = argparse.ArgumentParser()
@@ -74,7 +114,8 @@ def getopts():
     p.add_argument('frames', nargs='+', help='the 4 (or 16) frames')
     opts = p.parse_args()
     if len(opts.frames) not in (4, 16):
-        raise ValueError("please provide 4 or 16 frames (got %d)" % opts.frames)
+        raise ValueError("please provide 4 or 16 frames (got %d)" %
+                         len(opts.frames))
     return opts
 
 
@@ -97,19 +138,27 @@ def check_valid_frames(frames):
     shutter = set()
     for (name, tags) in frames:
         seq.add(tags['MakerNotes:SequenceNumber'])
-        width.add(tags['EXIF:ImageWidth'])
-        height.add(tags['EXIF:ImageHeight'])
         make.add(tags['EXIF:Make'])
         model.add(tags['EXIF:Model'])
         lens.add(tags.get('EXIF:LensInfo'))
         aperture.add(tags.get('EXIF:FNumber'))
         shutter.add(tags.get('EXIF:ShutterSpeed'))
-    if len(make) != 1 or make.pop() != 'SONY':
+    if len(make) != 1 or make.pop() not in ('SONY', 'FUJIFILM'):
         raise ValueError('the frames must all come from a '
-                         'SONY ILCE-7RM3 or ILCE-7RM4 camera')
-    if len(model) != 1 or model.pop() not in ('ILCE-7RM3', 'ILCE-7RM4'):
+                         'SONY ILCE-7RM3, SONY ILCE-7RM4 '
+                         'or FUJIFILM GFX 100 camera')
+    if len(model) != 1 or model.pop() not in ('ILCE-7RM3', 'ILCE-7RM4',
+                                              'GFX 100'):
         raise ValueError('the frames must all come from a '
-                         'SONY ILC3-7RM3 or ILCE-7RM4 camera')
+                         'SONY ILC3-7RM3, ILCE-7RM4 '
+                         'or FUJIFILM GFX 100 camera')
+    is_sony = tags['EXIF:Make'] == 'SONY'
+    if is_sony:
+        width.add(tags['EXIF:ImageWidth'])
+        height.add(tags['EXIF:ImageHeight'])
+    else:
+        width.add(tags['RAF:RawImageFullWidth'])
+        height.add(tags['RAF:RawImageFullHeight'])        
     if len(width) != 1 or len(height) != 1:
         raise ValueError('the frames have different dimensions')
     if len(lens) != 1 or len(aperture) != 1 or len(shutter) != 1:
@@ -117,6 +166,7 @@ def check_valid_frames(frames):
     off = min(seq)
     if seq != set(range(off, off+len(frames))):
         raise ValueError('the frames do not form a valid sequence')
+    return is_sony
 
 
 def get_frames(framenames):
@@ -124,7 +174,7 @@ def get_frames(framenames):
     for name in framenames:
         tags = get_tags(name)
         frames.append((name, tags))
-    check_valid_frames(frames)
+    is_sony = check_valid_frames(frames)
     # order according to the SequenceNumber tag
     seq2idx = {
         2 : 0,
@@ -139,7 +189,11 @@ def get_frames(framenames):
         g = seq2idx[1 + sn // 4]
         return (g, i)
     frames.sort(key=key)
-    w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
+    if is_sony:
+        w, h = frames[0][1]['EXIF:ImageWidth'], frames[0][1]['EXIF:ImageHeight']
+    else:
+        w, h = frames[0][1]['RAF:RawImageFullWidth'], \
+               frames[0][1]['RAF:RawImageFullHeight']
     if len(frames) == 16:
         w *= 2
         h *= 2
@@ -148,9 +202,6 @@ def get_frames(framenames):
 
 def get_frame_data(data, frame, idx, is16):
     filename, tags = frame
-    width = tags['EXIF:ImageWidth']
-    height = tags['EXIF:ImageHeight']
-    off = tags['EXIF:StripOffsets']
     if not is16:
         factor = 1
         rowstart = 0
@@ -159,23 +210,52 @@ def get_frame_data(data, frame, idx, is16):
         factor = 2
         rowstart = 1 if (idx // 4) >= 2 else 0
         colstart = 1 if (idx // 4) % 2 else 0
-    _get_frame_data(data, filename, idx % 4, width, height, off,
-                    factor, rowstart, colstart)
+    is_sony = tags['EXIF:Make'] == 'SONY'
+    if is_sony:
+        width = tags['EXIF:ImageWidth']
+        height = tags['EXIF:ImageHeight']
+        off = tags['EXIF:StripOffsets']
+        _get_frame_data(data, filename, idx % 4, width, height, off,
+                        factor, rowstart, colstart)
+    else:
+        _get_fuji_frame_data(data, filename, idx % 4,
+                             factor, rowstart, colstart)
 
 
 def write_pseudo_arq(filename, data, outtags):
     wb = None
-    wbkey = "MakerNotes:WB_RGGBLevels"
-    if wbkey in outtags:
-        try:
-            wb = [int(c) for c in outtags[wbkey].split()]
-        except Exception as e:
-            print("WARNING: can't determine camera WB (%s)" % str(e))
+    black = None
+    is_sony = outtags['EXIF:Make'] == 'SONY'
+    if is_sony:
+        wbkey = "MakerNotes:WB_RGGBLevels"
+        if wbkey in outtags:
+            try:
+                wb = [int(c) for c in outtags[wbkey].split()]
+            except Exception as e:
+                print("WARNING: can't determine camera WB (%s)" % str(e))
+    else:
+        wbkey = "RAF:WB_GRBLevels"
+        if wbkey in outtags:
+            try:
+                wb = [int(c) for c in outtags[wbkey].split()]
+                if len(wb) == 3:
+                    wb.append(0)
+            except Exception as e:
+                print("WARNING: can't determine camera WB (%s)" % str(e))
+        bkey = "RAF:BlackLevel"
+        if bkey in outtags: 
+            try:
+                black = [int(c) for c in outtags[bkey].split()]
+            except Exception as e:
+                print("WARNING: can't determine black levels (%s)" % str(e))
+           
 
     # set the WB where dcraw can find it
     extratags = []
     if wb is not None:
         extratags.append((29459, 'H', 4, wb))
+    if black is not None:
+        extratags.append((50714, 'H', 4, black))
     tifffile.imsave(filename, data, photometric=None, planarconfig='contig',
                     extratags=extratags)
 

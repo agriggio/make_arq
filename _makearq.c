@@ -113,9 +113,70 @@ static PyObject *get_frame_data(PyObject *self, PyObject *args)
 }
 
 
+static PyObject *get_fuji_frame_data(PyObject *self, PyObject *args)
+{
+    int index, factor, rowstart, colstart;
+    PyObject *data, *im;
+    int r_off, c_off;
+    int width, height;
+
+    if (!PyArg_ParseTuple(args, "OiiOiiii", &im, &height, &width, &data,
+                          &index, &factor, &rowstart, &colstart)) {
+        goto err;
+    }
+
+    switch (index) {
+    case 0:
+        r_off = 1;
+        c_off = 0;
+        break;
+    case 1:
+        r_off = 1;
+        c_off = 1;
+        break;
+    case 2:
+        r_off = 0;
+        c_off = 0;
+        break;
+    case 3:
+        r_off = 0;
+        c_off = 1;
+        break;
+    default:
+        PyErr_SetString(PyExc_ValueError, "index must be between 0 and 3");
+        goto err;
+    }
+
+    for (int y = 0; y < height; ++y) {
+        int rr = (y + r_off - 1) * factor + rowstart;
+        if (rr >= 0) {
+            for (int x = 0; x < width; ++x) {
+                int cc = (x + c_off - 1) * factor + colstart;
+                if (cc >= 0) {
+                    unsigned short *v =
+                        (unsigned short *)PyArray_GETPTR2(im, y, x);
+                    int c = color(y, x);
+                    unsigned short *out =
+                        (unsigned short *)PyArray_GETPTR3(data, rr, cc, c);
+                    *out = *v;
+                }
+            }
+        }
+    }
+
+    Py_INCREF(Py_None);
+    return Py_None;
+
+  err:
+    return NULL;    
+}
+
+
 static PyMethodDef _makearq_methods[] = {
     {"get_frame_data", (PyCFunction) get_frame_data, METH_VARARGS,
      "Get the data stored in one ARW frame"},
+    {"get_fuji_frame_data", (PyCFunction) get_fuji_frame_data, METH_VARARGS,
+     "Get the data stored in one RAF frame"},
     {NULL, NULL, 0, NULL}
 };
 
