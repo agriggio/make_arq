@@ -83,11 +83,17 @@ try:
                     data, idx, factor, rowstart, colstart)
             else:
                 r_off, c_off = {
-                    0 : (1, 0),
-                    1 : (1, 1),
+                    0 : (1, 1),
+                    1 : (0, 1),
                     2 : (0, 0),
-                    3 : (0, 1)
+                    3 : (1, 0)
                     }[idx]
+                ## r_off, c_off = {
+                ##     0 : (1, 0),
+                ##     1 : (1, 1),
+                ##     2 : (0, 0),
+                ##     3 : (0, 1)
+                ##     }[idx]
                 color = raw.raw_colors
                 for y, row in enumerate(im):
                     rr = (y + r_off - 1) * factor + rowstart
@@ -176,12 +182,20 @@ def get_frames(framenames):
         frames.append((name, tags))
     is_sony = check_valid_frames(frames)
     # order according to the SequenceNumber tag
-    seq2idx = {
-        2 : 0,
-        1 : 1,
-        4 : 2,
-        3 : 3,
-        }
+    if is_sony:
+        seq2idx = {
+            2 : 0,
+            1 : 1,
+            4 : 2,
+            3 : 3,
+            }
+    else:
+        seq2idx = {
+            3 : 0,
+            4 : 1,
+            2 : 2,
+            1 : 3,
+            }
     def key(t):
         sn = t[1]['MakerNotes:SequenceNumber'] - 1
         s = 1 + (sn) % 4

@@ -48,18 +48,20 @@ static PyObject *get_frame_data(PyObject *self, PyObject *args)
 
     switch (index) {
     case 0:
-        r_off = c_off = 1;
-        break;
-    case 1:
-        r_off = 0;
+        r_off = 1;
         c_off = 1;
         break;
-    case 2:
-        r_off = c_off = 0;
-        break;
-    case 3:
+    case 1:
         r_off = 1;
         c_off = 0;
+        break;
+    case 2:
+        r_off = 0;
+        c_off = 0;
+        break;
+    case 3:
+        r_off = 0;
+        c_off = 1;
         break;
     default:
         PyErr_SetString(PyExc_ValueError, "index must be between 0 and 3");
@@ -125,22 +127,41 @@ static PyObject *get_fuji_frame_data(PyObject *self, PyObject *args)
         goto err;
     }
 
+    /* switch (index) { */
+    /* case 0: */
+    /*     r_off = 1; */
+    /*     c_off = 0; */
+    /*     break; */
+    /* case 1: */
+    /*     r_off = 1; */
+    /*     c_off = 1; */
+    /*     break; */
+    /* case 2: */
+    /*     r_off = 0; */
+    /*     c_off = 0; */
+    /*     break; */
+    /* case 3: */
+    /*     r_off = 0; */
+    /*     c_off = 1; */
+    /*     break; */
+    /* default: */
+    /*     PyErr_SetString(PyExc_ValueError, "index must be between 0 and 3"); */
+    /*     goto err; */
+    /* } */
     switch (index) {
     case 0:
-        r_off = 1;
-        c_off = 0;
+        r_off = c_off = 1;
         break;
     case 1:
-        r_off = 1;
+        r_off = 0;
         c_off = 1;
         break;
     case 2:
-        r_off = 0;
-        c_off = 0;
+        r_off = c_off = 0;
         break;
     case 3:
-        r_off = 0;
-        c_off = 1;
+        r_off = 1;
+        c_off = 0;
         break;
     default:
         PyErr_SetString(PyExc_ValueError, "index must be between 0 and 3");
