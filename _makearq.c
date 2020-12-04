@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 #define color(row, col) ((((row) & 1) << 1) + ((col) & 1))
+#define dngcolor(row, col) (0x94949494 >> ((((row) << 1 & 14) + ((col) & 1)) << 1) & 3)
 
 static PyObject *get_sony_frame_data(PyObject *self, PyObject *args)
 {
@@ -30,14 +31,15 @@ static PyObject *get_sony_frame_data(PyObject *self, PyObject *args)
     PyObject *data;
     FILE *src;
     int r_off, c_off;
+    int is_dng;
     unsigned short *line;
 
     src = NULL;
     line = NULL;
 
-    if (!PyArg_ParseTuple(args, "Osiiiiiiii", &data, &filename,
+    if (!PyArg_ParseTuple(args, "Osiiiiiiiii", &data, &filename,
                           &width, &height, &offset, &factor,
-                          &r_off, &c_off, &rowstart, &colstart)) {
+                          &r_off, &c_off, &rowstart, &colstart, &is_dng)) {
         goto err;
     }
 
@@ -67,7 +69,7 @@ static PyObject *get_sony_frame_data(PyObject *self, PyObject *args)
             if (rr >= 0 && rr < height * factor) {
                 int cc = (col + c_off) * factor + colstart;
                 if (cc >= 0 && cc < width * factor) {
-                    int c = color(row, col);
+                    int c = is_dng ? dngcolor(row, col) : color(row, col);
                     unsigned short *out =
                         (unsigned short *)PyArray_GETPTR3(data, rr, cc, c);
                     *out = line[col];
@@ -99,9 +101,11 @@ static PyObject *get_fuji_frame_data(PyObject *self, PyObject *args)
     PyObject *data, *im;
     int r_off, c_off;
     int width, height;
+    int is_dng;
 
-    if (!PyArg_ParseTuple(args, "OiiiOiiii", &im, &height, &width, &factor,
-                          &data, &r_off, &c_off, &rowstart, &colstart)) {
+    if (!PyArg_ParseTuple(args, "OiiiOiiiii", &im, &height, &width, &factor,
+                          &data, &r_off, &c_off, &rowstart, &colstart,
+                          &is_dng)) {
         goto err;
     }
 
@@ -113,7 +117,7 @@ static PyObject *get_fuji_frame_data(PyObject *self, PyObject *args)
                 if (cc >= 0 && cc < width * factor) {
                     unsigned short *v =
                         (unsigned short *)PyArray_GETPTR2(im, y, x);
-                    int c = color(y, x);
+                    int c = is_dng ? dngcolor(y, x) : color(y, x);
                     unsigned short *out =
                         (unsigned short *)PyArray_GETPTR3(data, rr, cc, c);
                     *out = *v;
@@ -126,7 +130,7 @@ static PyObject *get_fuji_frame_data(PyObject *self, PyObject *args)
     return Py_None;
 
   err:
-    return NULL;    
+    return NULL;
 }
 
 

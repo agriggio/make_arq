@@ -36,8 +36,11 @@ except ImportError:
     _has_makearq = False
 
 
-def color(row, col):
+def color(row, col, is_dng):
     return ((row & 1) << 1) + (col & 1)
+
+def dngcolor(row, col):
+    return (0x94949494 >> ((((row) << 1 & 14) + ((col) & 1)) << 1) & 3)
 
 
 def get_sony_frame_data(data, frame, idx, factor):
@@ -53,10 +56,12 @@ def get_sony_frame_data(data, frame, idx, factor):
         2 : (0, 0),
         3 : (1, 0)
         }[idx % 4]
+    is_dng = len(data[0][0]) == 3
 
     if _has_makearq:
         _makearq.get_sony_frame_data(data, filename, width, height, offset,
-                                     factor, r_off, c_off, rowstart, colstart)
+                                     factor, r_off, c_off, rowstart, colstart,
+                                     is_dng)
     else:
         fmt = '=' + ('H' * width)
         rowbytes = width * 2
@@ -75,7 +80,8 @@ def get_sony_frame_data(data, frame, idx, factor):
                     for col in colidx:
                         cc = (col + c_off) * factor + colstart
                         if cc >= 0:
-                            c = color(row, col)
+                            c = dngcolor(row, col) if is_dng \
+                                else color(row, col)
                             rowdata[cc][c] = v[col]        
 
 try:
@@ -83,6 +89,7 @@ try:
     
     def get_fuji_frame_data(data, frame, idx, factor):
         filename = frame[0]
+        is_dng = len(data[0][0]) == 3
         
         with rawpy.imread(filename) as raw:
             im = raw.raw_image
@@ -106,7 +113,7 @@ try:
             if _has_makearq:
                 _makearq.get_fuji_frame_data(
                     im, len(im), len(im[0]), factor,
-                    data, r_off, c_off, rowstart, colstart)
+                    data, r_off, c_off, rowstart, colstart, is_dng)
             else:
                 rmax = len(im) * factor
                 cmax = len(im[0]) * factor
@@ -117,7 +124,7 @@ try:
                         for x, v in enumerate(row):
                             cc = (x + c_off) * factor + colstart
                             if cc >= 0 and cc < cmax:
-                                c = color(y, x)
+                                c = dngcolor(y, x) if is_dng else color(y, x)
                                 rowdata[cc][c] = v
                             
 except ImportError:
@@ -132,6 +139,8 @@ def getopts():
     p.add_argument('-o', '--output', help='output file')
     p.add_argument('-4', '--force-4', action='store_true',
                    help='force using 4 frames only, even if 16 are provided')
+    p.add_argument('-d', '--dng', action='store_true',
+                   help='generate a linear DNG with RGB data')
     p.add_argument('frames', nargs='+', help='the 4 (or 16) frames')
     opts = p.parse_args()
     if len(opts.frames) not in (4, 16):
@@ -231,10 +240,11 @@ def get_frame_data(data, frame, idx, is16, is_sony):
         get_fuji_frame_data(data, frame, idx, factor)
 
 
-def write_pseudo_arq(filename, data, outtags):
+def write_raw(filename, data, outtags, is16, is_sony):
     wb = None
     black = None
-    is_sony = outtags['EXIF:Make'] == 'SONY'
+    white = None
+    is_dng = len(data[0][0]) == 3
     if is_sony:
         wbkey = "MakerNotes:WB_RGGBLevels"
         if wbkey in outtags:
@@ -242,6 +252,19 @@ def write_pseudo_arq(filename, data, outtags):
                 wb = [int(c) for c in outtags[wbkey].split()]
             except Exception as e:
                 print("WARNING: can't determine camera WB (%s)" % str(e))
+        if is_dng:
+            bkey = "MakerNotes:BlackLevel"
+            if bkey in outtags: 
+                try:
+                    black = [int(c) for c in outtags[bkey].split()]
+                except Exception as e:
+                    print("WARNING: can't determine black levels (%s)" % str(e))
+            wkey = "EXIF:WhiteLevel"
+            if wkey in outtags:
+                try:
+                    white = [int(outtags[wkey])] * 4
+                except Exception as e:
+                    print("WARNING: can't determine white levels (%s)" % str(e))
     else:
         wbkey = "RAF:WB_GRBLevels"
         if wbkey in outtags:
@@ -257,15 +280,52 @@ def write_pseudo_arq(filename, data, outtags):
                 black = [int(c) for c in outtags[bkey].split()]
             except Exception as e:
                 print("WARNING: can't determine black levels (%s)" % str(e))
+        if is_dng:
+            white = [0xffff] * 4
            
-
-    # set the WB where dcraw can find it
     extratags = []
+    if is_dng:
+        extratags.append((50706, 'B', 4, [1, 1, 0, 0])) # DNG version 1.1.0.0
+        extratags.append((339, 'H', 1, [1])) # SampleFormat
+        extratags.append((258, 'H', 1, [16])) # BitsPerSample
+        # crop
+        crop_origin, crop_size = None, None
+        if is_sony:
+            try:
+                crop_origin = [int(c) for c in
+                               outtags['EXIF:DefaultCropOrigin'].split()]
+                crop_size = [int(c) for c in
+                             outtags['EXIF:DefaultCropSize'].split()]
+            except Exception as e:
+                print("WARNING: can't determine crop (%s)" % str(e))
+        else:
+            try:
+                crop_origin = [int(c) for c in
+                               outtags['RAF:RawImageCropTopLeft'].split()]
+                crop_origin.reverse()
+                crop_size = [int(c) for c in
+                             outtags["RAF:RawImageCroppedSize"].split('x')]
+            except Exception as e:
+                print("WARNING: can't determine crop (%s)" % str(e))
+        if crop_origin and crop_size:
+            if is16:
+                crop_origin = [c*2 for c in crop_origin]
+                crop_size = [c*2 for c in crop_size]
+            h, w, _ = data.shape
+            data = data[crop_origin[1]:crop_origin[1]+crop_size[1],
+                        crop_origin[0]:crop_origin[0]+crop_size[0]]
+    else:
+        extratags.append((258, 'H', 1, [14 if is_sony else 16])) # BitsPerSample
+        
     if wb is not None:
         extratags.append((29459, 'H', 4, wb))
     if black is not None:
         extratags.append((50714, 'H', 4, black))
-    tifffile.imsave(filename, data, photometric=None, planarconfig='contig',
+    if white is not None:
+        extratags.append((50717, 'H', 4, white))
+    tifffile.imsave(filename, data,
+                    photometric=None if not is_dng else 'LINEAR_RAW',
+                    planarconfig='contig',
                     extratags=extratags)
 
     # try preserving the tags
@@ -288,6 +348,9 @@ def write_pseudo_arq(filename, data, outtags):
                 "EXIF:Gamma",
                 "EXIF:YCbCrCoefficients",
                 "EXIF:YCbCrPositioning",
+                "EXIF:DefaultCropOrigin",
+                "EXIF:DefaultCropSize",
+                "EXIF:BitsPerSample",
                 ):
         if key in outtags:
             del outtags[key]
@@ -303,7 +366,6 @@ def write_pseudo_arq(filename, data, outtags):
         json.dump([outtags], out)
     
     p = subprocess.Popen(['exiftool', '-overwrite_original',
-                          #'-b',
                           '-G', '-j=' + jsonname, filename],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     err, _ = p.communicate()
@@ -314,7 +376,7 @@ def write_pseudo_arq(filename, data, outtags):
     
     if p.returncode != 0:
         raise IOError(err)
-    
+ 
 
 def main():
     start = time.time()
@@ -329,12 +391,12 @@ def main():
         is16 = False
         width //= 2
         height //= 2
-    data = numpy.zeros((height, width, 4), numpy.ushort)
+    data = numpy.zeros((height, width, 4 if not opts.dng else 3), numpy.ushort)
     for idx, frame in enumerate(frames):
         print('Reading frame:', frame[0])
         get_frame_data(data, frame, idx, is16, is_sony)
     print('Writing combined data to %s...' % opts.output)
-    write_pseudo_arq(opts.output, data, frames[0][1])
+    write_raw(opts.output, data, frames[0][1], is16, is_sony)
     end = time.time()
     print('Total time: %.3f' % (end - start))
 
