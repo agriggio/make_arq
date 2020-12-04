@@ -196,7 +196,6 @@ def get_frames(framenames):
         tags = get_tags(name)
         frames.append((name, tags))
     is_sony = check_valid_frames(frames)
-    # order according to the SequenceNumber tag
     seq2idx = {
         2 : 0,
         1 : 1,
@@ -270,10 +269,33 @@ def write_pseudo_arq(filename, data, outtags):
                     extratags=extratags)
 
     # try preserving the tags
-    for key in ('MakerNotes:SequenceNumber', 'SourceFile',
-                'EXIF:SamplesPerPixel',
-                'EXIF:ImageWidth', 'EXIF:ImageHeight'):
+    for key in ("SourceFile",
+                "MakerNotes:SequenceNumber", 
+                "EXIF:SamplesPerPixel",
+                "EXIF:ImageWidth",
+                "EXIF:ImageHeight",
+                "EXIF:Compression",
+                "EXIF:PhotometricInterpretation",
+                "EXIF:SamplesPerPixel",
+                "EXIF:PlanarConfiguration",
+                "EXIF:StripOffsets",
+                "EXIF:RowsPerStrip",
+                "EXIF:StripByteCounts",
+                "EXIF:ExifImageWidth",
+                "EXIF:ExifImageHeight",
+                "EXIF:FlashpixVersion",
+                "EXIF:ColorSpace",
+                "EXIF:Gamma",
+                "EXIF:YCbCrCoefficients",
+                "EXIF:YCbCrPositioning",
+                ):
         if key in outtags:
+            del outtags[key]
+    if "EXIF:ImageDescription" not in outtags:
+        outtags["EXIF:ImageDescription"] = ""
+    outtags["EXIF:Software"] = "make_arq"
+    for key in list(outtags.keys()):
+        if key.startswith('MakerNotes:'):
             del outtags[key]
     fd, jsonname = tempfile.mkstemp('.json')
     os.close(fd)
@@ -281,7 +303,8 @@ def write_pseudo_arq(filename, data, outtags):
         json.dump([outtags], out)
     
     p = subprocess.Popen(['exiftool', '-overwrite_original',
-                          '-b', '-G', '-j=' + jsonname, filename],
+                          #'-b',
+                          '-G', '-j=' + jsonname, filename],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     err, _ = p.communicate()
     os.unlink(jsonname)
@@ -291,7 +314,7 @@ def write_pseudo_arq(filename, data, outtags):
     
     if p.returncode != 0:
         raise IOError(err)
-
+    
 
 def main():
     start = time.time()
