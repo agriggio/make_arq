@@ -35,22 +35,31 @@ try:
 except ImportError:
     _has_makearq = False
 
-if _has_makearq:
-    _get_frame_data = _makearq.get_frame_data
-else:
-    def _get_frame_data(data, filename, idx, width, height, offset,
-                        factor=1, rowstart=0, colstart=0):
+
+def color(row, col):
+    return ((row & 1) << 1) + (col & 1)
+
+
+def get_sony_frame_data(data, frame, idx, factor):
+    filename, tags = frame
+    width = tags['EXIF:ImageWidth']
+    height = tags['EXIF:ImageHeight']
+    offset = tags['EXIF:StripOffsets']
+    rowstart = 1 if (idx // 4) >= 2 else 0
+    colstart = 1 if (idx // 4) % 2 else 0
+    r_off, c_off = {
+        0 : (1, 1),
+        1 : (0, 1),
+        2 : (0, 0),
+        3 : (1, 0)
+        }[idx % 4]
+
+    if _has_makearq:
+        _makearq.get_sony_frame_data(data, filename, width, height, offset,
+                                     factor, r_off, c_off, rowstart, colstart)
+    else:
         fmt = '=' + ('H' * width)
         rowbytes = width * 2
-        r_off, c_off = {
-            0 : (1, 1),
-            1 : (0, 1),
-            2 : (0, 0),
-            3 : (1, 0)
-            }[idx]
-
-        def color(row, col):
-            return ((row & 1) << 1) + (col & 1)
 
         rowidx = list(range(height))
         colidx = list(range(width))
@@ -60,11 +69,11 @@ else:
             for row in rowidx:
                 d = f.read(rowbytes)
                 v = struct.unpack(fmt, d)
-                rr = (row + r_off - 1) * factor + rowstart
+                rr = (row + r_off) * factor + rowstart
                 if rr >= 0:
                     rowdata = data[rr]
                     for col in colidx:
-                        cc = (col + c_off - 1) * factor + colstart
+                        cc = (col + c_off) * factor + colstart
                         if cc >= 0:
                             c = color(row, col)
                             rowdata[cc][c] = v[col]        
@@ -72,41 +81,47 @@ else:
 try:
     import rawpy
     
-    def _get_fuji_frame_data(data, filename, idx, 
-                             factor=1, rowstart=0, colstart=0):
+    def get_fuji_frame_data(data, frame, idx, factor):
+        filename = frame[0]
+        
         with rawpy.imread(filename) as raw:
             im = raw.raw_image
+            r_off, c_off = {
+                0 : (0, 0),
+                1 : (1, 0),
+                2 : (0, 1),
+                3 : (1, 1)
+                }[idx % 4]
+            if factor == 1:
+                rowstart = 0
+                colstart = 0
+            else:
+                rowstart, colstart = {
+                    0 : (4, 2),
+                    1 : (-1, 2),
+                    2 : (4, -3),
+                    3 : (-1, -3)
+                    }[idx // 4]
 
             if _has_makearq:
                 _makearq.get_fuji_frame_data(
-                    im, len(im), len(im[0]), 
-                    data, idx, factor, rowstart, colstart)
+                    im, len(im), len(im[0]), factor,
+                    data, r_off, c_off, rowstart, colstart)
             else:
-                r_off, c_off = {
-                    0 : (1, 1),
-                    1 : (0, 1),
-                    2 : (0, 0),
-                    3 : (1, 0)
-                    }[idx]
-                ## r_off, c_off = {
-                ##     0 : (1, 0),
-                ##     1 : (1, 1),
-                ##     2 : (0, 0),
-                ##     3 : (0, 1)
-                ##     }[idx]
-                color = raw.raw_colors
+                rmax = len(im) * factor
+                cmax = len(im[0]) * factor
                 for y, row in enumerate(im):
-                    rr = (y + r_off - 1) * factor + rowstart
-                    if rr >= 0:
+                    rr = (y + r_off) * factor + rowstart
+                    if rr >= 0 and rr < rmax:
                         rowdata = data[rr]
                         for x, v in enumerate(row):
-                            cc = (x + c_off - 1) * factor + colstart
-                            if cc >= 0:
-                                c = color[y][x]
+                            cc = (x + c_off) * factor + colstart
+                            if cc >= 0 and cc < cmax:
+                                c = color(y, x)
                                 rowdata[cc][c] = v
                             
 except ImportError:
-    def _get_fuji_frame_data(*args):
+    def get_fuji_frame_data(*args):
         raise ValueError("please install rawpy to enable FUJIFILM support")
     
 
@@ -182,20 +197,12 @@ def get_frames(framenames):
         frames.append((name, tags))
     is_sony = check_valid_frames(frames)
     # order according to the SequenceNumber tag
-    if is_sony:
-        seq2idx = {
-            2 : 0,
-            1 : 1,
-            4 : 2,
-            3 : 3,
-            }
-    else:
-        seq2idx = {
-            3 : 0,
-            4 : 1,
-            2 : 2,
-            1 : 3,
-            }
+    seq2idx = {
+        2 : 0,
+        1 : 1,
+        4 : 2,
+        3 : 3,
+        }
     def key(t):
         sn = t[1]['MakerNotes:SequenceNumber'] - 1
         s = 1 + (sn) % 4
@@ -211,29 +218,18 @@ def get_frames(framenames):
     if len(frames) == 16:
         w *= 2
         h *= 2
-    return frames, w, h
+    return frames, w, h, is_sony
     
 
-def get_frame_data(data, frame, idx, is16):
-    filename, tags = frame
+def get_frame_data(data, frame, idx, is16, is_sony):
     if not is16:
         factor = 1
-        rowstart = 0
-        colstart = 0
     else:
         factor = 2
-        rowstart = 1 if (idx // 4) >= 2 else 0
-        colstart = 1 if (idx // 4) % 2 else 0
-    is_sony = tags['EXIF:Make'] == 'SONY'
     if is_sony:
-        width = tags['EXIF:ImageWidth']
-        height = tags['EXIF:ImageHeight']
-        off = tags['EXIF:StripOffsets']
-        _get_frame_data(data, filename, idx % 4, width, height, off,
-                        factor, rowstart, colstart)
+        get_sony_frame_data(data, frame, idx, factor)
     else:
-        _get_fuji_frame_data(data, filename, idx % 4,
-                             factor, rowstart, colstart)
+        get_fuji_frame_data(data, frame, idx, factor)
 
 
 def write_pseudo_arq(filename, data, outtags):
@@ -303,17 +299,17 @@ def main():
     if os.path.exists(opts.output) and not opts.force:
         raise IOError('output file "%s" already exists (use -f to overwrite)'
                       % opts.output)
-    frames, width, height = get_frames(opts.frames)
+    frames, width, height, is_sony = get_frames(opts.frames)
     is16 = len(frames) == 16
     if is16 and opts.force_4:
-        frames = [frames[0], frames[4], frames[8], frames[12]]
+        frames = frames[:4]
         is16 = False
         width //= 2
         height //= 2
-    data = numpy.empty((height, width, 4), numpy.ushort)
+    data = numpy.zeros((height, width, 4), numpy.ushort)
     for idx, frame in enumerate(frames):
         print('Reading frame:', frame[0])
-        get_frame_data(data, frame, idx, is16)
+        get_frame_data(data, frame, idx, is16, is_sony)
     print('Writing combined data to %s...' % opts.output)
     write_pseudo_arq(opts.output, data, frames[0][1])
     end = time.time()
