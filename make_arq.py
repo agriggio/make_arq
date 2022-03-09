@@ -178,7 +178,7 @@ def check_valid_frames(frames):
                          'SONY ILCE-7RM3, SONY ILCE-7RM4 '
                          'or FUJIFILM GFX 100 camera')
     if len(model) != 1 or model.pop() not in ('ILCE-7RM3', 'ILCE-7RM4',
-                                              'GFX 100'):
+                                              'ILCE-7RM4A', 'GFX 100'):
         raise ValueError('the frames must all come from a '
                          'SONY ILC3-7RM3, ILCE-7RM4 '
                          'or FUJIFILM GFX 100 camera')
