@@ -36,7 +36,7 @@ except ImportError:
     _has_makearq = False
 
 
-def color(row, col, is_dng):
+def color(row, col):
     return ((row & 1) << 1) + (col & 1)
 
 def dngcolor(row, col):
@@ -69,6 +69,7 @@ def get_sony_frame_data(data, frame, idx, factor):
         rowidx = list(range(height))
         colidx = list(range(width))
 
+        get_color = dngcolor if is_dng else color
         with open(filename, 'rb') as f:
             f.seek(offset)
             for row in rowidx:
@@ -80,8 +81,7 @@ def get_sony_frame_data(data, frame, idx, factor):
                     for col in colidx:
                         cc = (col + c_off) * factor + colstart
                         if cc >= 0:
-                            c = dngcolor(row, col) if is_dng \
-                                else color(row, col)
+                            c = get_color(row, col)
                             rowdata[cc][c] = v[col]        
 
 try:
@@ -117,6 +117,7 @@ try:
             else:
                 rmax = len(im) * factor
                 cmax = len(im[0]) * factor
+                get_color = dngcolor if is_dng else color
                 for y, row in enumerate(im):
                     rr = (y + r_off) * factor + rowstart
                     if rr >= 0 and rr < rmax:
@@ -124,7 +125,7 @@ try:
                         for x, v in enumerate(row):
                             cc = (x + c_off) * factor + colstart
                             if cc >= 0 and cc < cmax:
-                                c = dngcolor(y, x) if is_dng else color(y, x)
+                                c = get_color(y, x)
                                 rowdata[cc][c] = v
                             
 except ImportError:
