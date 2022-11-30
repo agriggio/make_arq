@@ -76,11 +76,11 @@ def get_sony_frame_data(data, frame, idx, factor):
                 d = f.read(rowbytes)
                 v = struct.unpack(fmt, d)
                 rr = (row + r_off) * factor + rowstart
-                if rr >= 0:
+                if 0 <= rr < height:
                     rowdata = data[rr]
                     for col in colidx:
                         cc = (col + c_off) * factor + colstart
-                        if cc >= 0:
+                        if 0 <= cc < width:
                             c = get_color(row, col)
                             rowdata[cc][c] = v[col]        
 
@@ -137,7 +137,7 @@ def getopts():
     p = argparse.ArgumentParser()
     p.add_argument('-f', '--force', action='store_true',
                    help='overwrite destination')
-    p.add_argument('-o', '--output', help='output file')
+    p.add_argument('-o', '--output', help='output file', required=True)
     p.add_argument('-4', '--force-4', action='store_true',
                    help='force using 4 frames only, even if 16 are provided')
     p.add_argument('-d', '--dng', action='store_true',
@@ -324,10 +324,10 @@ def write_raw(filename, data, outtags, is16, is_sony):
         extratags.append((50714, 'H', 4, black))
     if white is not None:
         extratags.append((50717, 'H', 4, white))
-    tifffile.imsave(filename, data,
-                    photometric=None if not is_dng else 'LINEAR_RAW',
-                    planarconfig='contig',
-                    extratags=extratags)
+    tifffile.imwrite(filename, data,
+                     photometric=None if not is_dng else 'LINEAR_RAW',
+                     planarconfig='contig',
+                     extratags=extratags)
 
     # try preserving the tags
     for key in ("SourceFile",
