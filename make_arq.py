@@ -167,6 +167,15 @@ def check_valid_frames(frames):
     lens = set()
     aperture = set()
     shutter = set()
+    supported_cameras = {
+        'SONY ILCE-7RM3',
+        'SONY ILCE-7RM4',
+        'SONY ILCE-7RM4A',
+        'SONY ILCE-7RM5',
+        'SONY ILCE-1',
+        'FUJIFILM GFX 100',
+        'FUJIFILM GFX100S',
+        }
     for (name, tags) in frames:
         seq.add(tags['MakerNotes:SequenceNumber'])
         make.add(tags['EXIF:Make'])
@@ -174,15 +183,12 @@ def check_valid_frames(frames):
         lens.add(tags.get('EXIF:LensInfo'))
         aperture.add(tags.get('EXIF:FNumber'))
         shutter.add(tags.get('EXIF:ShutterSpeed'))
-    if len(make) != 1 or make.pop() not in ('SONY', 'FUJIFILM'):
-        raise ValueError('the frames must all come from a '
-                         'SONY ILCE-7RM3, SONY ILCE-7RM4 '
-                         'or FUJIFILM GFX 100 camera')
-    if len(model) != 1 or model.pop() not in ('ILCE-7RM3', 'ILCE-7RM4',
-                                              'ILCE-7RM4A', 'GFX 100'):
-        raise ValueError('the frames must all come from a '
-                         'SONY ILC3-7RM3, ILCE-7RM4 '
-                         'or FUJIFILM GFX 100 camera')
+    if len(make) != 1 or len(model) != 1:
+        raise ValueError('the frames must all come from the same camera')
+    make_model = make.pop() + ' ' + model.pop()
+    if make_model not in supported_cameras:
+        raise ValueError(f'camera {make_model} not supported (must be one of ' +
+                         ", ".join(sorted(supported_cameras)) + ')')
     is_sony = tags['EXIF:Make'] == 'SONY'
     if is_sony:
         width.add(tags['EXIF:ImageWidth'])
