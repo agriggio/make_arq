@@ -294,7 +294,8 @@ def write_raw(filename, data, outtags, is16, is_sony):
     if is_dng:
         extratags.append((50706, 'B', 4, [1, 1, 0, 0])) # DNG version 1.1.0.0
         extratags.append((339, 'H', 1, [1])) # SampleFormat
-        extratags.append((258, 'H', 1, [16])) # BitsPerSample
+        #extratags.append((258, 'H', 1, [16])) # BitsPerSample
+        bitspersample = "16 16 16"
         # crop
         crop_origin, crop_size = None, None
         if is_sony:
@@ -322,7 +323,8 @@ def write_raw(filename, data, outtags, is16, is_sony):
             data = data[crop_origin[1]:crop_origin[1]+crop_size[1],
                         crop_origin[0]:crop_origin[0]+crop_size[0]]
     else:
-        extratags.append((258, 'H', 1, [14 if is_sony else 16])) # BitsPerSample
+        #extratags.append((258, 'H', 1, [14 if is_sony else 16])) # BitsPerSample
+        bitspersample = ' '.join(['14' if is_sony else '16'] * 4)
         
     if wb is not None:
         extratags.append((29459, 'H', 4, wb))
@@ -367,6 +369,7 @@ def write_raw(filename, data, outtags, is16, is_sony):
     for key in list(outtags.keys()):
         if key.startswith('MakerNotes:'):
             del outtags[key]
+    outtags["EXIF:BitsPerSample"] = bitspersample
     fd, jsonname = tempfile.mkstemp('.json')
     os.close(fd)
     with open(jsonname, 'w') as out:
