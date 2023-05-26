@@ -70,17 +70,18 @@ def get_sony_frame_data(data, frame, idx, factor):
         colidx = list(range(width))
 
         get_color = dngcolor if is_dng else color
+        fwidth, fheight = width * factor, height * factor
         with open(filename, 'rb') as f:
             f.seek(offset)
             for row in rowidx:
                 d = f.read(rowbytes)
                 v = struct.unpack(fmt, d)
                 rr = (row + r_off) * factor + rowstart
-                if 0 <= rr < height:
+                if 0 <= rr < fheight:
                     rowdata = data[rr]
                     for col in colidx:
                         cc = (col + c_off) * factor + colstart
-                        if 0 <= cc < width:
+                        if 0 <= cc < fwidth:
                             c = get_color(row, col)
                             rowdata[cc][c] = v[col]        
 
