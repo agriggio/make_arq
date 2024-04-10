@@ -174,6 +174,7 @@ def check_valid_frames(frames):
         'SONY ILCE-7RM4A',
         'SONY ILCE-7RM5',
         'SONY ILCE-1',
+        'SONY ILCE-7CR',
         'FUJIFILM GFX 100',
         'FUJIFILM GFX100S',
         }
