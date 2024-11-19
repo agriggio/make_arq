@@ -170,6 +170,7 @@ def check_valid_frames(frames):
     shutter = set()
     supported_cameras = {
         'SONY ILCE-7RM3',
+        'SONY ILCE-7RM3A',
         'SONY ILCE-7RM4',
         'SONY ILCE-7RM4A',
         'SONY ILCE-7RM5',
